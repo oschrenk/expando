@@ -7,7 +7,7 @@ lazy val root = (project in file(".")).
       organization    := "com.oschrenk",
       scalaVersion    := "2.12.4"
     )),
-    name := "expandurl",
+    name := "expando",
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-http"            % akkaHttpVersion,
       "com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion,
