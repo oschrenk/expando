@@ -3,7 +3,7 @@ package com.oschrenk.expando
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
-import akka.http.scaladsl.model.headers.{Cookie, Location, `Set-Cookie`}
+import akka.http.scaladsl.model.headers.{Cookie, `Set-Cookie`}
 import akka.stream.{ActorMaterializer, Materializer}
 
 import scala.concurrent.duration.Duration
@@ -24,11 +24,14 @@ object Expando {
           response.discardEntityBytes()
 
           val cookies = response.header[`Set-Cookie`].map(_.cookie).map(c => Cookie(c.name, c.value))
-          val newUri = response.header[Location] match {
-            case Some(location) if location.uri.isRelative =>
-              newLocation.getOrElse(originalUrl).withPath(location.uri.path)
-            case Some(location)  =>
-              location.uri
+          val location = response.headers.find(h => h.lowercaseName().equals("location"))
+            .map(h => Uri.apply(h.value().replace(" ", "%20")))
+
+          val newUri = location match {
+            case Some(uri) if uri.isRelative =>
+              newLocation.getOrElse(originalUrl).withPath(uri.path)
+            case Some(uri)  =>
+              uri
             case None =>
               throw new IllegalArgumentException("empty location header on redirect")
           }
