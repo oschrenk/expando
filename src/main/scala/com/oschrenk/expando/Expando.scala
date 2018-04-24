@@ -21,19 +21,21 @@ object Expando {
     def redirectOrResult(originalUrl: Uri, newLocation: Option[Uri], response: HttpResponse)(implicit materializer: Materializer): Future[Uri] = {
       response.status match {
         case StatusCodes.Found | StatusCodes.MovedPermanently | StatusCodes.SeeOther | StatusCodes.TemporaryRedirect ⇒
-          val location = response.header[Location]
-          val cookies = response.header[`Set-Cookie`].map(_.cookie).map(c => Cookie(c.name, c.value))
-
-          if (location.isEmpty) {
-            println(s"${response.status} $originalUrl")
-          }
-
-          val newUri = location.get.uri
           response.discardEntityBytes()
+
+          val cookies = response.header[`Set-Cookie`].map(_.cookie).map(c => Cookie(c.name, c.value))
+          val newUri = response.header[Location] match {
+            case Some(location) if location.uri.isRelative =>
+              newLocation.getOrElse(originalUrl).withPath(location.uri.path)
+            case Some(location)  =>
+              location.uri
+            case None =>
+              throw new IllegalArgumentException("empty location header on redirect")
+          }
 
           // change to GET method as allowed by https://tools.ietf.org/html/rfc7231#section-6.4.3
           Http().singleRequest(HttpRequest(method = HttpMethods.GET, uri = newUri, headers = cookies.toList))
-            .flatMap(res => redirectOrResult(originalUrl, location.map(_.uri), res))
+            .flatMap(res => redirectOrResult(originalUrl, Some(newUri), res))
         case _ ⇒
           response.discardEntityBytes()
           Future.successful(newLocation.getOrElse(originalUrl))
