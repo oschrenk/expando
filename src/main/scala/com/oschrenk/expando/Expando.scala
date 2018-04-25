@@ -62,13 +62,17 @@ object Expando {
     }
 
     def followRedirectOrResult(uri: Uri): Future[ExpandedUri] = {
-     request(uri).flatMap{res =>
-       redirectOrResult(uri, None, res)
-         .map(newUri => ExpandedUri(uri, Right(newUri)))
-         .recover{
-           case e => ExpandedUri(uri, Left(e.getMessage))
-         }
-     }
+      if (uri.path.isEmpty) {
+        Future.successful(ExpandedUri(uri, Right(uri)))
+      } else {
+        request(uri).flatMap{res =>
+          redirectOrResult(uri, None, res)
+            .map(newUri => ExpandedUri(uri, Right(newUri)))
+            .recover{
+              case e => ExpandedUri(uri, Left(e.getMessage))
+            }
+        }
+      }
     }
 
     val toUri: Flow[String, Uri, _] = Flow[String]
