@@ -9,6 +9,8 @@ lazy val root = (project in file(".")).
     )),
     name := "expando",
     libraryDependencies ++= Seq(
+      "com.typesafe" % "config" % "1.3.2",
+
       "com.typesafe.akka" %% "akka-http"            % akkaHttpVersion,
       "com.typesafe.akka" %% "akka-stream"          % akkaVersion,
 

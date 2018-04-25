@@ -8,7 +8,6 @@ import akka.http.scaladsl.model.headers.{Cookie, `Set-Cookie`}
 import akka.stream.scaladsl.{Flow, Sink, Source}
 import akka.stream.{ActorMaterializer, Materializer, ThrottleMode}
 
-import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.io.{Source => FileSource}
 
@@ -20,9 +19,6 @@ object Expando {
     implicit val system: ActorSystem = ActorSystem()
     implicit val materializer: ActorMaterializer = ActorMaterializer()
     implicit val executionContext: ExecutionContextExecutor = system.dispatcher
-
-    val UrlPath = "/Users/oliver/Downloads/urls.txt"
-    val DefaultEncoding = "UTF-8"
 
     def request(url: Uri, cookie: Option[Cookie] = None): Future[HttpResponse] = {
       Http()
@@ -78,14 +74,14 @@ object Expando {
     val toUri: Flow[String, Uri, _] = Flow[String]
       .map(Uri.apply)
     val expandUri: Flow[Uri, ExpandedUri, _] = Flow[Uri]
-      .mapAsyncUnordered(10)(followRedirectOrResult)
+      .mapAsyncUnordered(Config.Parallelism)(followRedirectOrResult)
     val printExpandedUri: Sink[ExpandedUri, Future[Done]] = Sink.foreach{ expandedUri =>
       println(expandedUri)
     }
     val urlSource =
       Source
-        .fromIterator(() => FileSource.fromFile(UrlPath, DefaultEncoding).getLines())
-        .throttle(10, 1.second, 10, ThrottleMode.shaping)
+        .fromIterator(() => FileSource.fromFile(Config.Source.Path.get, Config.Source.Encoding).getLines())
+        .throttle(Config.Throttle.Elements, Config.Throttle.Rate, Config.Throttle.Burst, ThrottleMode.shaping)
 
     urlSource
       .via(toUri)
