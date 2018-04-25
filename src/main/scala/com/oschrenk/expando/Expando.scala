@@ -1,32 +1,50 @@
 package com.oschrenk.expando
 
+import akka.Done
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.headers.{Cookie, `Set-Cookie`}
-import akka.stream.{ActorMaterializer, Materializer}
+import akka.stream.scaladsl.{Flow, Sink, Source}
+import akka.stream.{ActorMaterializer, Materializer, ThrottleMode}
 
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContextExecutor, Future}
-import scala.io.Source
+import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.io.{Source => FileSource}
+
+case class ExpandedUri(source: Uri, result: Either[String, Uri])
 
 object Expando {
+
   def main(args: Array[String]): Unit = {
     implicit val system: ActorSystem = ActorSystem()
     implicit val materializer: ActorMaterializer = ActorMaterializer()
     implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
-    // akka http does not follow redirects automatically
-    // see https://github.com/akka/akka-http/issues/195
+    val UrlPath = "/Users/oliver/Downloads/urls.txt"
+    val DefaultEncoding = "UTF-8"
+
+    def request(url: Uri, cookie: Option[Cookie] = None): Future[HttpResponse] = {
+      Http()
+        .singleRequest(HttpRequest(
+          method = HttpMethods.GET,
+          uri = url,
+          headers = cookie.toList))
+    }
+
     def redirectOrResult(originalUrl: Uri, newLocation: Option[Uri], response: HttpResponse)(implicit materializer: Materializer): Future[Uri] = {
       response.status match {
         case StatusCodes.Found | StatusCodes.MovedPermanently | StatusCodes.SeeOther | StatusCodes.TemporaryRedirect ⇒
           response.discardEntityBytes()
 
+          // deal with cookie protection schemes
           val cookies = response.header[`Set-Cookie`].map(_.cookie).map(c => Cookie(c.name, c.value))
+
+          // deal with malformed location values containing whitespaces
           val location = response.headers.find(h => h.lowercaseName().equals("location"))
             .map(h => Uri.apply(h.value().replace(" ", "%20")))
 
+          // deal with relative urls in location value
           val newUri = location match {
             case Some(uri) if uri.isRelative =>
               newLocation.getOrElse(originalUrl).withPath(uri.path)
@@ -36,31 +54,42 @@ object Expando {
               throw new IllegalArgumentException("empty location header on redirect")
           }
 
-          // change to GET method as allowed by https://tools.ietf.org/html/rfc7231#section-6.4.3
-          Http().singleRequest(HttpRequest(method = HttpMethods.GET, uri = newUri, headers = cookies.toList))
-            .flatMap(res => redirectOrResult(originalUrl, Some(newUri), res))
+          request(newUri, cookies).flatMap(redirectOrResult(originalUrl, Some(newUri), _))
         case _ ⇒
           response.discardEntityBytes()
           Future.successful(newLocation.getOrElse(originalUrl))
       }
     }
 
-    val urls = Source.fromFile("/Users/oliver/Downloads/urls.txt", "UTF-8").getLines()
-    val result = Future.sequence{
-      urls.map { url =>
-        Http().singleRequest(HttpRequest(uri = url))
-          .flatMap(res => redirectOrResult(url, None, res).map{ newLoc =>
-            println(s"$url $newLoc")
-          }).recover{
-          case err =>
-            println(s"$url $err")
-        }
-      }
+    def followRedirectOrResult(uri: Uri): Future[ExpandedUri] = {
+     request(uri).flatMap{res =>
+       redirectOrResult(uri, None, res)
+         .map(newUri => ExpandedUri(uri, Right(newUri)))
+         .recover{
+           case e => ExpandedUri(uri, Left(e.getMessage))
+         }
+     }
     }
 
-    Await.result(result, Duration.Inf).foreach{
-      _ => system.terminate()
+    val toUri: Flow[String, Uri, _] = Flow[String]
+      .map(Uri.apply)
+    val expandUri: Flow[Uri, ExpandedUri, _] = Flow[Uri]
+      .mapAsyncUnordered(10)(followRedirectOrResult)
+    val printExpandedUri: Sink[ExpandedUri, Future[Done]] = Sink.foreach{ expandedUri =>
+      println(expandedUri)
     }
+    val urlSource =
+      Source
+        .fromIterator(() => FileSource.fromFile(UrlPath, DefaultEncoding).getLines())
+        .throttle(10, 1.second, 10, ThrottleMode.shaping)
+
+    urlSource
+      .via(toUri)
+      .via(expandUri)
+      .runWith(printExpandedUri)
+      .onComplete { _ =>
+        println("http://i.am.done.com http://i.am.done.com")
+      }
   }
 
 }
