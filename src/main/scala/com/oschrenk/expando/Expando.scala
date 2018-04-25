@@ -12,7 +12,11 @@ import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.io.{Source => FileSource}
 import scala.util.{Failure, Success}
 
-case class ExpandedUri(source: Uri, result: Either[String, Uri])
+
+sealed trait ExpandedUri
+case class NoRedirect(source: Uri) extends ExpandedUri
+case class WithRedirect(source: Uri, target: Uri) extends ExpandedUri
+case class Failed(source: Uri, error: String) extends ExpandedUri
 
 object Expando {
 
@@ -60,13 +64,13 @@ object Expando {
 
     def followRedirectOrResult(uri: Uri): Future[ExpandedUri] = {
       if (uri.path.isEmpty) {
-        Future.successful(ExpandedUri(uri, Right(uri)))
+        Future.successful(NoRedirect(uri))
       } else {
         request(uri).flatMap{res =>
           redirectOrResult(uri, None, res)
-            .map(newUri => ExpandedUri(uri, Right(newUri)))
+            .map ( newUri => if (uri == newUri) NoRedirect(uri) else WithRedirect(uri, newUri) )
             .recover{
-              case e => ExpandedUri(uri, Left(e.getMessage))
+              case e => Failed(uri, e.getMessage)
             }
         }
       }
@@ -76,8 +80,13 @@ object Expando {
       .map(Uri.apply)
     val expandUri: Flow[Uri, ExpandedUri, _] = Flow[Uri]
       .mapAsyncUnordered(Config.Parallelism)(followRedirectOrResult)
-    val printExpandedUri: Sink[ExpandedUri, Future[Done]] = Sink.foreach{ expandedUri =>
-      println(expandedUri)
+    val printExpandedUri: Sink[ExpandedUri, Future[Done]] = Sink.foreach {
+      case NoRedirect(uri) =>
+        println(s"$uri 2xx $uri")
+      case WithRedirect(from, to) =>
+        println(s"$from 3xx $to")
+      case Failed(uri, error) =>
+        println(s"$uri 5xx $error")
     }
     val urlSource =
       Source
