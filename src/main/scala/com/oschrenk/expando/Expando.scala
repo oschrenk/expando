@@ -25,15 +25,17 @@ object Expando {
     implicit val materializer: ActorMaterializer = ActorMaterializer()
     implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
-    def request(url: Uri, cookie: Option[Cookie] = None): Future[HttpResponse] = {
+    def request(url: Uri, cookie: Option[Cookie] = None): Future[Either[String, HttpResponse]] = {
       Http()
         .singleRequest(HttpRequest(
           method = HttpMethods.GET,
           uri = url,
           headers = cookie.toList))
+        .map(Right.apply)
+        .recover{ case e => Left(e.getMessage)}
     }
 
-    def redirectOrResult(originalUrl: Uri, newLocation: Option[Uri], response: HttpResponse)(implicit materializer: Materializer): Future[Uri] = {
+    def redirectOrResult(originalUrl: Uri, newLocation: Option[Uri], response: HttpResponse)(implicit materializer: Materializer): Future[Either[String, Uri]] = {
       response.status match {
         case StatusCodes.Found | StatusCodes.MovedPermanently | StatusCodes.SeeOther | StatusCodes.TemporaryRedirect ⇒
           response.discardEntityBytes()
@@ -55,10 +57,13 @@ object Expando {
               throw new IllegalArgumentException("empty location header on redirect")
           }
 
-          request(newUri, cookies).flatMap(redirectOrResult(originalUrl, Some(newUri), _))
+          request(newUri, cookies).flatMap {
+            case Left(error) => Future.successful(Left(error))
+            case Right(res) => redirectOrResult(originalUrl, Some(newUri), res)
+          }
         case _ ⇒
           response.discardEntityBytes()
-          Future.successful(newLocation.getOrElse(originalUrl))
+          Future.successful(Right(newLocation.getOrElse(originalUrl)))
       }
     }
 
@@ -66,13 +71,16 @@ object Expando {
       if (uri.path.isEmpty) {
         Future.successful(NoRedirect(uri))
       } else {
-        request(uri).flatMap{res =>
-          redirectOrResult(uri, None, res)
-            .map ( newUri => if (uri == newUri) NoRedirect(uri) else WithRedirect(uri, newUri) )
-            .recover{
-              case e => Failed(uri, e.getMessage)
-            }
-        }
+        request(uri)
+          .flatMap {
+            case Left(error) => Future.successful(Failed(uri, error))
+            case Right(res) =>
+              redirectOrResult(uri, None, res)
+                .map {
+                  case Left(error) => Failed(uri, error)
+                  case Right(newUri) => if (uri == newUri) NoRedirect(uri) else WithRedirect(uri, newUri)
+                }
+          }
       }
     }
 
