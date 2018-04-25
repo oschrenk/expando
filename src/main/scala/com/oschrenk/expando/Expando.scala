@@ -10,6 +10,7 @@ import akka.stream.{ActorMaterializer, Materializer, ThrottleMode}
 
 import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.io.{Source => FileSource}
+import scala.util.{Failure, Success}
 
 case class ExpandedUri(source: Uri, result: Either[String, Uri])
 
@@ -87,8 +88,9 @@ object Expando {
       .via(toUri)
       .via(expandUri)
       .runWith(printExpandedUri)
-      .onComplete { _ =>
-        println("http://i.am.done.com http://i.am.done.com")
+      .onComplete {
+        case Success(_) => println("http://i.am.done.com http://i.am.done.com")
+        case Failure(_) => println("http://i.am.broken.com http://i.am.broken.com")
       }
   }
 
