@@ -106,8 +106,12 @@ object Expando {
       .via(expandUri)
       .runWith(printExpandedUri)
       .onComplete {
-        case Success(_) => println("http://i.am.done.com 200 http://i.am.done.com")
-        case Failure(error) => println(s"http://i.am.broken.com 666 $error")
+        case Success(_) =>
+          println("http://i.am.done.com 200 http://i.am.done.com")
+          system.terminate()
+        case Failure(error) =>
+          println(s"http://i.am.broken.com 666 $error")
+          system.terminate()
       }
   }
 
