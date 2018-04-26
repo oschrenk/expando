@@ -26,11 +26,11 @@ object Expando {
     implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
     def request(url: Uri, cookie: Option[Cookie] = None): Future[Either[String, HttpResponse]] = {
-      Http()
+      timeout(Http()
         .singleRequest(HttpRequest(
           method = HttpMethods.GET,
           uri = url,
-          headers = cookie.toList))
+          headers = cookie.toList)))
         .map(Right.apply)
         .recover{ case e => Left(e.getMessage)}
     }
@@ -65,6 +65,13 @@ object Expando {
           response.discardEntityBytes()
           Future.successful(Right(newLocation.getOrElse(originalUrl)))
       }
+    }
+
+    def timeout[T](f: Future[T]): Future[T] = {
+      import akka.pattern.after
+      import scala.concurrent.duration._
+      val a = after(duration = 15.second, using = system.scheduler)(Future.failed(new TimeoutException("Future timed out!")))
+      Future firstCompletedOf Seq(f, a)
     }
 
     def followRedirectOrResult(uri: Uri): Future[ExpandedUri] = {
