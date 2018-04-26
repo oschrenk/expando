@@ -69,9 +69,8 @@ object Expando {
 
     def timeout[T](f: Future[T]): Future[T] = {
       import akka.pattern.after
-      import scala.concurrent.duration._
-      val a = after(duration = 15.second, using = system.scheduler)(Future.failed(new TimeoutException("Future timed out!")))
-      Future firstCompletedOf Seq(f, a)
+      val a = after(duration = Config.Timeout, using = system.scheduler)(Future.failed(new TimeoutException("Future timed out!")))
+      Future.firstCompletedOf(Seq(f, a))
     }
 
     def followRedirectOrResult(uri: Uri): Future[ExpandedUri] = {

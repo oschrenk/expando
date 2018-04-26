@@ -19,7 +19,9 @@ object Config {
     val Encoding: String = config.getString("expando.source.encoding")
   }
 
-
+  implicit def asFiniteDuration(d: java.time.Duration): FiniteDuration =
+    scala.concurrent.duration.FiniteDuration(d.getSeconds, TimeUnit.SECONDS)
+  val Timeout: FiniteDuration = config.getDuration("expando.timeout")
   val Parallelism: Int = config.getInt("expando.parallelism")
 
 }
