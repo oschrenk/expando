@@ -45,7 +45,14 @@ object Expando {
 
           // deal with malformed location values containing whitespaces
           val location = response.headers.find(h => h.lowercaseName().equals("location"))
-            .map(h => Uri.apply(h.value().replace(" ", "%20")))
+            .map { header =>
+              try {
+                Uri.apply(header.value().replace(" ", "%20"))
+              }
+              catch {
+                case e: IllegalUriException => throw new IllegalArgumentException(s"Malformed Location header |${header.value()}| for $originalUrl: ${e.getMessage}")
+              }
+             }
 
           // deal with relative urls in location value
           val newUri = location match {
@@ -82,6 +89,7 @@ object Expando {
             case Left(error) => Future.successful(Failed(uri, error))
             case Right(res) =>
               redirectOrResult(uri, None, res)
+                .recover{ case e => Left(e.getMessage)}
                 .map {
                   case Left(error) => Failed(uri, error)
                   case Right(newUri) => if (uri == newUri) NoRedirect(uri) else WithRedirect(uri, newUri)
