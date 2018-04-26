@@ -6,9 +6,9 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.headers.{Cookie, `Set-Cookie`}
 import akka.stream.scaladsl.{Flow, Sink, Source}
-import akka.stream.{ActorMaterializer, Materializer, ThrottleMode}
+import akka.stream.{ActorMaterializer, Materializer}
 
-import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.concurrent.{ExecutionContextExecutor, Future, TimeoutException}
 import scala.io.{Source => FileSource}
 import scala.util.{Failure, Success}
 
@@ -99,7 +99,6 @@ object Expando {
     val urlSource =
       Source
         .fromIterator(() => FileSource.fromFile(Config.Source.Path.get, Config.Source.Encoding).getLines())
-        .throttle(Config.Throttle.Elements, Config.Throttle.Rate, Config.Throttle.Burst, ThrottleMode.shaping)
 
     urlSource
       .via(toUri)
