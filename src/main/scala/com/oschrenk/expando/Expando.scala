@@ -54,7 +54,7 @@ object Expando {
             case Some(uri)  =>
               uri
             case None =>
-              throw new IllegalArgumentException("empty location header on redirect")
+              throw new IllegalArgumentException(s"empty location header on redirect for $originalUrl")
           }
 
           request(newUri, cookies).flatMap {
