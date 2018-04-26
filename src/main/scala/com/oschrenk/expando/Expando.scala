@@ -57,7 +57,7 @@ object Expando {
           // deal with relative urls in location value
           val newUri = location match {
             case Some(uri) if uri.isRelative =>
-              newLocation.getOrElse(originalUrl).withPath(uri.path)
+              uri.resolvedAgainst(newLocation.getOrElse(originalUrl))
             case Some(uri)  =>
               uri
             case None =>
