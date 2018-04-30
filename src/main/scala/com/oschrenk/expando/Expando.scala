@@ -2,6 +2,7 @@ package com.oschrenk.expando
 
 import akka.Done
 import akka.actor.ActorSystem
+import akka.dispatch.MessageDispatcher
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.headers.{Cookie, `Set-Cookie`}
@@ -23,7 +24,7 @@ object Expando {
   def main(args: Array[String]): Unit = {
     implicit val system: ActorSystem = ActorSystem()
     implicit val materializer: ActorMaterializer = ActorMaterializer()
-    implicit val executionContext: ExecutionContextExecutor = system.dispatcher
+    implicit val executionContext: MessageDispatcher = system.dispatchers.lookup("expando.network")
 
     def request(url: Uri, cookie: Option[Cookie] = None): Future[Either[String, HttpResponse]] = {
       timeout(Http()
